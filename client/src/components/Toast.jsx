@@ -1,0 +1,44 @@
+import { useEffect } from 'react';
+import { CheckCircle2, AlertCircle, Info, X } from 'lucide-react';
+
+export default function Toast({ toast, onClose }) {
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => {
+      onClose();
+    }, 4500);
+    return () => clearTimeout(timer);
+  }, [toast, onClose]);
+
+  if (!toast) return null;
+
+  const isError = toast.type === 'error';
+  const isInfo = toast.type === 'info';
+
+  const bgColor = isError
+    ? 'bg-rose-50 border-rose-200 text-rose-900'
+    : isInfo
+    ? 'bg-sky-50 border-sky-200 text-sky-900'
+    : 'bg-emerald-50 border-emerald-200 text-emerald-900';
+
+  const IconComponent = isError ? AlertCircle : isInfo ? Info : CheckCircle2;
+  const iconColor = isError ? 'text-rose-500' : isInfo ? 'text-sky-500' : 'text-emerald-500';
+
+  return (
+    <div className="fixed bottom-5 right-5 z-50 max-w-md w-full px-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+      <div className={`flex items-start gap-3 p-4 rounded-xl border shadow-lg ${bgColor}`}>
+        <IconComponent className={`w-5 h-5 shrink-0 mt-0.5 ${iconColor}`} />
+        <div className="flex-1 text-sm font-medium leading-relaxed">
+          {toast.message}
+        </div>
+        <button
+          onClick={onClose}
+          className="text-slate-400 hover:text-slate-600 transition-colors p-1"
+          aria-label="Dismiss toast"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
