@@ -1,22 +1,11 @@
 const API_BASE = '/api';
 
-function getHeaders() {
-  const token = localStorage.getItem('lead_manager_token');
-  const headers = {
-    'Content-Type': 'application/json',
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
-}
-
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const config = {
     ...options,
     headers: {
-      ...getHeaders(),
+      'Content-Type': 'application/json',
       ...(options.headers || {}),
     },
   };
@@ -35,7 +24,6 @@ async function request(endpoint, options = {}) {
     return data;
   } catch (err) {
     if (!err.status && err.name === 'TypeError') {
-      // Network/Server down error
       const networkError = new Error('Cannot connect to the server. Please check your backend connection.');
       networkError.status = 503;
       throw networkError;
@@ -45,21 +33,15 @@ async function request(endpoint, options = {}) {
 }
 
 export const leadsApi = {
+  // Get all leads with optional search (by name) and status filter
   getAll: (params = {}) => {
     const query = new URLSearchParams();
-    if (params.search) query.append('search', params.search);
+    if (params.search && params.search.trim()) query.append('search', params.search.trim());
     if (params.status && params.status !== 'All') query.append('status', params.status);
-    if (params.source && params.source !== 'All') query.append('source', params.source);
-    if (params.sortBy) query.append('sortBy', params.sortBy);
-    if (params.sortOrder) query.append('sortOrder', params.sortOrder);
-    if (params.page) query.append('page', params.page);
-    if (params.limit) query.append('limit', params.limit);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return request(`/leads${queryString}`);
   },
-
-  getStats: () => request('/leads/stats'),
 
   getById: (id) => request(`/leads/${id}`),
 
@@ -79,25 +61,4 @@ export const leadsApi = {
     request(`/leads/${id}`, {
       method: 'DELETE',
     }),
-};
-
-export const authApi = {
-  login: (credentials) =>
-    request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify(credentials),
-    }),
-
-  register: (userData) =>
-    request('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    }),
-
-  demoLogin: () =>
-    request('/auth/demo-login', {
-      method: 'POST',
-    }),
-
-  getMe: () => request('/auth/me'),
 };

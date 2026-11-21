@@ -1,52 +1,35 @@
-import { test, describe, before, after } from 'node:test';
+import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import app from '../app.js';
 
-describe('Leads API Endpoints', () => {
+describe('Lead Manager API Tests', () => {
   let createdLeadId = null;
 
-  test('GET /api/health should return 200 OK', async () => {
+  test('GET /api/health returns 200 OK', async () => {
     const res = await request(app).get('/api/health');
     assert.equal(res.status, 200);
     assert.equal(res.body.status, 'ok');
   });
 
-  test('GET /api/leads should return list of leads and pagination', async () => {
+  test('GET /api/leads returns all leads', async () => {
     const res = await request(app).get('/api/leads');
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.ok(Array.isArray(res.body.data));
-    assert.ok(res.body.pagination);
-    assert.ok(res.body.pagination.total >= 0);
   });
 
-  test('GET /api/leads/stats should return counts per status', async () => {
-    const res = await request(app).get('/api/leads/stats');
-    assert.equal(res.status, 200);
-    assert.equal(res.body.success, true);
-    assert.equal(typeof res.body.data.total, 'number');
-    assert.equal(typeof res.body.data.new, 'number');
-    assert.equal(typeof res.body.data.contacted, 'number');
-    assert.equal(typeof res.body.data.qualified, 'number');
-    assert.equal(typeof res.body.data.lost, 'number');
-  });
-
-  test('POST /api/leads should create a new lead when payload is valid', async () => {
-    const newLead = {
+  test('POST /api/leads creates a lead with valid data', async () => {
+    const payload = {
       name: 'Rohan Gupta',
       email: 'rohan.gupta@enterprise.org',
       phone: '+91 99001 12233',
       company: 'Enterprise Org',
       source: 'Website',
       status: 'New',
-      notes: 'Interested in annual subscription',
     };
 
-    const res = await request(app)
-      .post('/api/leads')
-      .send(newLead);
-
+    const res = await request(app).post('/api/leads').send(payload);
     assert.equal(res.status, 201);
     assert.equal(res.body.success, true);
     assert.ok(res.body.data.id);
@@ -57,57 +40,42 @@ describe('Leads API Endpoints', () => {
     createdLeadId = res.body.data.id;
   });
 
-  test('POST /api/leads should reject with 400 when name is missing', async () => {
-    const invalidLead = {
-      email: 'noname@test.com',
+  test('POST /api/leads validates required name', async () => {
+    const res = await request(app).post('/api/leads').send({
+      email: 'valid@email.com',
       source: 'Website',
       status: 'New',
-    };
-
-    const res = await request(app)
-      .post('/api/leads')
-      .send(invalidLead);
-
+    });
     assert.equal(res.status, 400);
     assert.equal(res.body.success, false);
     assert.ok(res.body.errors.name);
   });
 
-  test('POST /api/leads should reject with 400 when email is invalid', async () => {
-    const invalidLead = {
-      name: 'Valid Name',
-      email: 'not-an-email',
+  test('POST /api/leads validates email format', async () => {
+    const res = await request(app).post('/api/leads').send({
+      name: 'Test Lead',
+      email: 'invalid-email',
       source: 'Website',
       status: 'New',
-    };
-
-    const res = await request(app)
-      .post('/api/leads')
-      .send(invalidLead);
-
+    });
     assert.equal(res.status, 400);
     assert.equal(res.body.success, false);
     assert.ok(res.body.errors.email);
   });
 
-  test('POST /api/leads should reject with 400 when status is invalid', async () => {
-    const invalidLead = {
-      name: 'Valid Name',
-      email: 'test@example.com',
+  test('POST /api/leads validates status enum', async () => {
+    const res = await request(app).post('/api/leads').send({
+      name: 'Test Lead',
+      email: 'lead@test.com',
       source: 'Website',
       status: 'InvalidStatus',
-    };
-
-    const res = await request(app)
-      .post('/api/leads')
-      .send(invalidLead);
-
+    });
     assert.equal(res.status, 400);
     assert.equal(res.body.success, false);
     assert.ok(res.body.errors.status);
   });
 
-  test('GET /api/leads/:id should retrieve the created lead', async () => {
+  test('GET /api/leads/:id returns single lead', async () => {
     assert.ok(createdLeadId);
     const res = await request(app).get(`/api/leads/${createdLeadId}`);
     assert.equal(res.status, 200);
@@ -116,13 +84,13 @@ describe('Leads API Endpoints', () => {
     assert.equal(res.body.data.name, 'Rohan Gupta');
   });
 
-  test('GET /api/leads/:id should return 404 for non-existent id', async () => {
+  test('GET /api/leads/:id returns 404 for unknown id', async () => {
     const res = await request(app).get('/api/leads/999999');
     assert.equal(res.status, 404);
     assert.equal(res.body.success, false);
   });
 
-  test('PUT /api/leads/:id should update an existing lead and its status', async () => {
+  test('PUT /api/leads/:id updates lead details and status', async () => {
     assert.ok(createdLeadId);
     const updatePayload = {
       name: 'Rohan Gupta Updated',
@@ -131,7 +99,6 @@ describe('Leads API Endpoints', () => {
       company: 'Enterprise Org Global',
       source: 'Website',
       status: 'Qualified',
-      notes: 'Demo completed, moving to proposal',
     };
 
     const res = await request(app)
@@ -141,31 +108,28 @@ describe('Leads API Endpoints', () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
     assert.equal(res.body.data.status, 'Qualified');
-    assert.equal(res.body.data.company, 'Enterprise Org Global');
+    assert.equal(res.body.data.name, 'Rohan Gupta Updated');
   });
 
-  test('GET /api/leads with search query should filter by name', async () => {
+  test('GET /api/leads?search= filters leads by name only', async () => {
     const res = await request(app).get('/api/leads?search=Rohan');
     assert.equal(res.status, 200);
     assert.ok(res.body.data.length > 0);
-    assert.ok(res.body.data.some(l => l.name.includes('Rohan')));
+    assert.ok(res.body.data.every((l) => l.name.toLowerCase().includes('rohan')));
   });
 
-  test('GET /api/leads with status filter should only return matching status', async () => {
+  test('GET /api/leads?status= filters leads by status only', async () => {
     const res = await request(app).get('/api/leads?status=Qualified');
     assert.equal(res.status, 200);
-    for (const lead of res.body.data) {
-      assert.equal(lead.status, 'Qualified');
-    }
+    assert.ok(res.body.data.every((l) => l.status === 'Qualified'));
   });
 
-  test('DELETE /api/leads/:id should delete the lead', async () => {
+  test('DELETE /api/leads/:id deletes the lead', async () => {
     assert.ok(createdLeadId);
     const res = await request(app).delete(`/api/leads/${createdLeadId}`);
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
 
-    // Verify it is gone
     const verifyRes = await request(app).get(`/api/leads/${createdLeadId}`);
     assert.equal(verifyRes.status, 404);
   });

@@ -3,7 +3,6 @@ import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import authRoutes from './routes/authRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 import { initDatabase } from './config/db.js';
@@ -11,35 +10,24 @@ import { initDatabase } from './config/db.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize DB tables and seed
+// Initialize database schema and initial sample leads
 initDatabase();
 
 export const app = express();
 
 // Middlewares
-app.use(cors({
-  origin: '*',
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
-
+app.use(cors());
 app.use(express.json());
 
-// API Health Check
+// Health Check
 app.get('/api/health', (req, res) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    app: 'Meru Lead Manager API',
-  });
+  res.status(200).json({ status: 'ok', app: 'Lead Manager API' });
 });
 
 // API Routes
-app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadRoutes);
 
-// In production, serve the built frontend
+// Serve built frontend if dist folder exists
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
@@ -51,7 +39,7 @@ if (fs.existsSync(clientDistPath)) {
   });
 }
 
-// 404 & Centralized Error Handlers
+// Error handling
 app.use(notFoundHandler);
 app.use(errorHandler);
 
