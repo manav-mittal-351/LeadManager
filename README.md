@@ -160,13 +160,21 @@ This runs both the Express backend and the Vite frontend concurrently:
 - **Backend API**: [http://localhost:5000](http://localhost:5000)
 - **Health Check**: [http://localhost:5000/api/health](http://localhost:5000/api/health)
 
-### Option B: Production Single-Port Delivery
+### Option B: Production Single-Port Delivery (Local)
 You can build the frontend and serve both the React app and REST API from the single backend port (`5000`):
 ```bash
 npm run build
 npm start
 ```
 Then visit [http://localhost:5000](http://localhost:5000) in your browser.
+
+### Option C: Vercel Deployment (Serverless)
+The project is pre-configured for one-click deployment on [Vercel](https://vercel.com):
+- **Framework Preset**: Other / Vite
+- **Root Directory**: `./` (project root)
+- **Build Command**: `npm run build`
+- **Output Directory**: `client/dist`
+- **Environment Variables**: Add `MONGODB_URI` and `JWT_SECRET` in your Vercel Project Settings.
 
 ---
 

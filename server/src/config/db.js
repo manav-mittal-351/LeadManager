@@ -39,7 +39,19 @@ function sanitizeMongoUri(uri) {
   }
 }
 
+let cachedPromise = null;
+
 export async function connectDB() {
+  // Reuse existing active connection in serverless or local environments
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+
+  // If a connection attempt is already in-flight, await the same promise
+  if (cachedPromise) {
+    return cachedPromise;
+  }
+
   const uri = process.env.MONGODB_URI;
 
   if (!uri) {
@@ -51,9 +63,12 @@ export async function connectDB() {
   const connectionUri = sanitizeMongoUri(uri);
 
   try {
-    await mongoose.connect(connectionUri);
+    cachedPromise = mongoose.connect(connectionUri);
+    await cachedPromise;
     console.log('Connected to MongoDB Atlas');
+    return mongoose.connection;
   } catch (error) {
+    cachedPromise = null; // Reset cache so subsequent requests can retry
     console.error('Failed to connect to MongoDB Atlas:', error.message);
     throw error;
   }

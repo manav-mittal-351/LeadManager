@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import authRoutes from './routes/authRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
+import { connectDB } from './config/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,23 @@ app.use(express.json());
 // Health Check
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', app: 'Lead Manager API' });
+});
+
+// Ensure database connection is active (reuses connection in serverless environments)
+app.use(async (req, res, next) => {
+  if (req.originalUrl && req.originalUrl.startsWith('/api')) {
+    try {
+      await connectDB();
+      next();
+    } catch (err) {
+      return res.status(500).json({
+        success: false,
+        message: 'Database connection failed. Please check server configuration.',
+      });
+    }
+  } else {
+    next();
+  }
 });
 
 // API Routes
