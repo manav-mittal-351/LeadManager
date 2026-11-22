@@ -97,7 +97,7 @@ export async function updateLead(req, res, next) {
         source,
         status,
       },
-      { new: true, runValidators: true }
+      { returnDocument: 'after', runValidators: true }
     );
 
     if (!updatedLead) {

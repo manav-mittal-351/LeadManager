@@ -8,6 +8,31 @@ try {
   console.warn('Could not set custom DNS servers:', err.message);
 }
 
+// Safely encodes password in case it contains special characters like '@'
+function sanitizeMongoUri(uri) {
+  if (!uri || !uri.includes('://')) return uri;
+  try {
+    const protoIndex = uri.indexOf('://');
+    const prefix = uri.substring(0, protoIndex + 3);
+    const rest = uri.substring(protoIndex + 3);
+    const lastAtIndex = rest.lastIndexOf('@');
+    if (lastAtIndex === -1) return uri;
+
+    const userPass = rest.substring(0, lastAtIndex);
+    const hostAndQuery = rest.substring(lastAtIndex + 1);
+    const colonIndex = userPass.indexOf(':');
+    if (colonIndex === -1) return uri;
+
+    const username = userPass.substring(0, colonIndex);
+    const rawPassword = userPass.substring(colonIndex + 1);
+    const encodedPassword = encodeURIComponent(decodeURIComponent(rawPassword));
+
+    return `${prefix}${username}:${encodedPassword}@${hostAndQuery}`;
+  } catch {
+    return uri;
+  }
+}
+
 export async function connectDB() {
   const uri = process.env.MONGODB_URI;
 
@@ -17,8 +42,10 @@ export async function connectDB() {
     throw error;
   }
 
+  const connectionUri = sanitizeMongoUri(uri);
+
   try {
-    await mongoose.connect(uri);
+    await mongoose.connect(connectionUri);
     console.log('Connected to MongoDB Atlas');
   } catch (error) {
     console.error('Failed to connect to MongoDB Atlas:', error.message);
