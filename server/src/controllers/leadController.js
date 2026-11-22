@@ -1,34 +1,23 @@
-import { db } from '../config/db.js';
+import Lead from '../models/Lead.js';
 
 // Get leads with search (by name only) and filter (by status only)
-export function getLeads(req, res, next) {
+export async function getLeads(req, res, next) {
   try {
     const { search = '', status = 'All' } = req.query;
 
-    const conditions = [];
-    const params = [];
+    const filter = {};
 
-    // Search by name only (case-insensitive LIKE)
+    // Search by lead name only (case-insensitive)
     if (search && search.trim() !== '') {
-      conditions.push('name LIKE ?');
-      params.push(`%${search.trim()}%`);
+      filter.name = { $regex: search.trim(), $options: 'i' };
     }
 
     // Filter by status only
     if (status && status !== 'All') {
-      conditions.push('status = ?');
-      params.push(status.trim());
+      filter.status = status.trim();
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const query = `
-      SELECT id, name, email, phone, company, source, status, created_at, updated_at
-      FROM leads
-      ${whereClause}
-      ORDER BY id DESC
-    `;
-
-    const leads = db.prepare(query).all(...params);
+    const leads = await Lead.find(filter).sort({ createdAt: -1 });
 
     return res.status(200).json({
       success: true,
@@ -40,11 +29,11 @@ export function getLeads(req, res, next) {
 }
 
 // Get single lead by ID
-export function getLeadById(req, res, next) {
+export async function getLeadById(req, res, next) {
   try {
     const { id } = req.params;
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
 
+    const lead = await Lead.findById(id);
     if (!lead) {
       return res.status(404).json({
         success: false,
@@ -57,30 +46,30 @@ export function getLeadById(req, res, next) {
       data: lead,
     });
   } catch (err) {
+    // If invalid MongoDB ObjectId format, return 404
+    if (err.name === 'CastError') {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found',
+      });
+    }
     next(err);
   }
 }
 
 // Create new lead
-export function createLead(req, res, next) {
+export async function createLead(req, res, next) {
   try {
     const { name, email, phone, company, source, status } = req.body;
 
-    const insertStmt = db.prepare(`
-      INSERT INTO leads (name, email, phone, company, source, status)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `);
-
-    const result = insertStmt.run(
+    const newLead = await Lead.create({
       name,
       email,
-      phone || '',
-      company || '',
+      phone: phone || '',
+      company: company || '',
       source,
-      status
-    );
-
-    const newLead = db.prepare('SELECT * FROM leads WHERE id = ?').get(result.lastInsertRowid);
+      status,
+    });
 
     return res.status(201).json({
       success: true,
@@ -93,36 +82,30 @@ export function createLead(req, res, next) {
 }
 
 // Edit / Update lead
-export function updateLead(req, res, next) {
+export async function updateLead(req, res, next) {
   try {
     const { id } = req.params;
     const { name, email, phone, company, source, status } = req.body;
 
-    const existing = db.prepare('SELECT id FROM leads WHERE id = ?').get(id);
-    if (!existing) {
+    const updatedLead = await Lead.findByIdAndUpdate(
+      id,
+      {
+        name,
+        email,
+        phone: phone || '',
+        company: company || '',
+        source,
+        status,
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!updatedLead) {
       return res.status(404).json({
         success: false,
         message: 'Lead not found',
       });
     }
-
-    const updateStmt = db.prepare(`
-      UPDATE leads
-      SET name = ?, email = ?, phone = ?, company = ?, source = ?, status = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `);
-
-    updateStmt.run(
-      name,
-      email,
-      phone || '',
-      company || '',
-      source,
-      status,
-      id
-    );
-
-    const updatedLead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
 
     return res.status(200).json({
       success: true,
@@ -130,31 +113,41 @@ export function updateLead(req, res, next) {
       data: updatedLead,
     });
   } catch (err) {
+    if (err.name === 'CastError') {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found',
+      });
+    }
     next(err);
   }
 }
 
 // Delete lead
-export function deleteLead(req, res, next) {
+export async function deleteLead(req, res, next) {
   try {
     const { id } = req.params;
 
-    const existing = db.prepare('SELECT id, name FROM leads WHERE id = ?').get(id);
-    if (!existing) {
+    const deletedLead = await Lead.findByIdAndDelete(id);
+    if (!deletedLead) {
       return res.status(404).json({
         success: false,
         message: 'Lead not found',
       });
     }
 
-    db.prepare('DELETE FROM leads WHERE id = ?').run(id);
-
     return res.status(200).json({
       success: true,
       message: 'Lead deleted successfully',
-      data: { id: Number(id) },
+      data: { id },
     });
   } catch (err) {
+    if (err.name === 'CastError') {
+      return res.status(404).json({
+        success: false,
+        message: 'Lead not found',
+      });
+    }
     next(err);
   }
 }

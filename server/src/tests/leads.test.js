@@ -1,10 +1,71 @@
-import { test, describe } from 'node:test';
+import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import mongoose from 'mongoose';
 import app from '../app.js';
+import Lead from '../models/Lead.js';
 
-describe('Lead Manager API Tests', () => {
+describe('Lead Manager API Tests (MongoDB)', () => {
   let createdLeadId = null;
+  let isMongoConnected = false;
+
+  before(async () => {
+    // Wait briefly for MongoDB connection attempt
+    await new Promise((r) => setTimeout(r, 1200));
+    isMongoConnected = mongoose.connection.readyState === 1;
+
+    // If MongoDB is not connected (e.g. offline or pending Atlas credentials),
+    // provide an in-memory mock so tests can verify the API contract and validation
+    if (!isMongoConnected) {
+      const mockStorage = [];
+
+      Lead.find = (filter = {}) => ({
+        sort: () => {
+          let results = [...mockStorage];
+          if (filter.name && filter.name.$regex) {
+            const re = new RegExp(filter.name.$regex, filter.name.$options || '');
+            results = results.filter((l) => re.test(l.name));
+          }
+          if (filter.status) {
+            results = results.filter((l) => l.status === filter.status);
+          }
+          return Promise.resolve(results);
+        },
+      });
+
+      Lead.findById = (id) => {
+        const item = mockStorage.find((l) => l.id === id || l._id === id);
+        return Promise.resolve(item || null);
+      };
+
+      Lead.create = (doc) => {
+        const id = '654321' + Math.random().toString(36).substring(2, 8);
+        const item = { ...doc, id, _id: id, createdAt: new Date() };
+        mockStorage.push(item);
+        return Promise.resolve(item);
+      };
+
+      Lead.findByIdAndUpdate = (id, update) => {
+        const index = mockStorage.findIndex((l) => l.id === id || l._id === id);
+        if (index === -1) return Promise.resolve(null);
+        mockStorage[index] = { ...mockStorage[index], ...update };
+        return Promise.resolve(mockStorage[index]);
+      };
+
+      Lead.findByIdAndDelete = (id) => {
+        const index = mockStorage.findIndex((l) => l.id === id || l._id === id);
+        if (index === -1) return Promise.resolve(null);
+        const [deleted] = mockStorage.splice(index, 1);
+        return Promise.resolve(deleted);
+      };
+    }
+  });
+
+  after(async () => {
+    if (isMongoConnected) {
+      await mongoose.disconnect();
+    }
+  });
 
   test('GET /api/health returns 200 OK', async () => {
     const res = await request(app).get('/api/health');
@@ -32,12 +93,12 @@ describe('Lead Manager API Tests', () => {
     const res = await request(app).post('/api/leads').send(payload);
     assert.equal(res.status, 201);
     assert.equal(res.body.success, true);
-    assert.ok(res.body.data.id);
+    assert.ok(res.body.data.id || res.body.data._id);
     assert.equal(res.body.data.name, 'Rohan Gupta');
     assert.equal(res.body.data.email, 'rohan.gupta@enterprise.org');
     assert.equal(res.body.data.status, 'New');
 
-    createdLeadId = res.body.data.id;
+    createdLeadId = res.body.data.id || res.body.data._id;
   });
 
   test('POST /api/leads validates required name', async () => {
@@ -80,12 +141,12 @@ describe('Lead Manager API Tests', () => {
     const res = await request(app).get(`/api/leads/${createdLeadId}`);
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
-    assert.equal(res.body.data.id, createdLeadId);
+    assert.equal(res.body.data.id || res.body.data._id, createdLeadId);
     assert.equal(res.body.data.name, 'Rohan Gupta');
   });
 
   test('GET /api/leads/:id returns 404 for unknown id', async () => {
-    const res = await request(app).get('/api/leads/999999');
+    const res = await request(app).get('/api/leads/654321abcdef0123456789aa');
     assert.equal(res.status, 404);
     assert.equal(res.body.success, false);
   });
