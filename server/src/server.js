@@ -19,7 +19,7 @@ async function startServer() {
 
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`===============================================`);
-      console.log(`🚀 Meru Lead Manager Server is running`);
+      console.log(`🚀 Lead Manager Server is running`);
       console.log(`📍 Port: http://localhost:${PORT}`);
       console.log(`🩺 Health check: http://localhost:${PORT}/api/health`);
       console.log(`===============================================`);

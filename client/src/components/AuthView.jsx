@@ -148,7 +148,7 @@ export default function AuthView({ onAuthSuccess }) {
                 required
                 value={formData.email}
                 onChange={(e) => handleChange('email', e.target.value)}
-                placeholder="sales@merutech.com"
+                placeholder="sales@example.com"
                 className={`w-full px-3 py-2 text-sm rounded-lg border outline-hidden transition-all ${
                   errors.email
                     ? 'border-rose-300 focus:border-rose-500 bg-rose-50/30'
@@ -195,9 +195,18 @@ export default function AuthView({ onAuthSuccess }) {
           </form>
         </div>
 
-        <p className="text-center text-xs text-slate-400 mt-6">
-          Meru Technosoft Pvt. Ltd. — Screening Assignment
-        </p>
+        <div className="text-center mt-6 flex flex-col items-center gap-1 text-xs text-slate-400">
+          <p className="font-medium text-slate-500">
+            Lead Manager — Sales Pipeline & CRM
+          </p>
+          <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-mono mt-0.5">
+            <span>React</span>
+            <span>•</span>
+            <span>Node.js / Express</span>
+            <span>•</span>
+            <span>MongoDB Atlas</span>
+          </div>
+        </div>
       </div>
     </div>
   );

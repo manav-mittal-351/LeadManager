@@ -247,9 +247,26 @@ export default function App() {
 
       {/* Minimal Footer */}
       <footer className="mt-auto border-t border-slate-200/80 bg-white py-3">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-1 text-[11px] text-slate-400">
-          <p>Lead Manager — Screening Assignment for Meru Technosoft</p>
-          <p>React • Node.js / Express • MongoDB Atlas</p>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
+          <p className="flex items-center gap-1.5 font-medium text-slate-600">
+            <span>Lead Manager</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-slate-400 font-normal">Modern Sales Pipeline & CRM</span>
+          </p>
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-400 flex-wrap justify-center">
+            <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md font-mono text-[10px] text-slate-600">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              React
+            </span>
+            <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md font-mono text-[10px] text-slate-600">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              Node.js / Express
+            </span>
+            <span className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md font-mono text-[10px] text-slate-600">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+              MongoDB Atlas
+            </span>
+          </div>
         </div>
       </footer>
 
