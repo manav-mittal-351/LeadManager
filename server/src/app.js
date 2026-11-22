@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import authRoutes from './routes/authRoutes.js';
 import leadRoutes from './routes/leadRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
 
@@ -25,6 +26,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // API Routes
+app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadRoutes);
 
 // Serve built frontend if dist folder exists

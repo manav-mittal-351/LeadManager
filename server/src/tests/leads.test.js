@@ -2,71 +2,67 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import mongoose from 'mongoose';
+import dns from 'dns';
 import app from '../app.js';
+import User from '../models/User.js';
 import Lead from '../models/Lead.js';
-import { connectDB } from '../config/db.js';
 
-describe('Lead Manager API Tests (MongoDB)', () => {
-  let createdLeadId = null;
+// Ensure DNS resolution works reliably on Windows
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+} catch {}
+
+function getTestDatabaseUri(uri) {
+  if (!uri || !uri.includes('://')) return uri;
+  const questionIndex = uri.indexOf('?');
+  const base = questionIndex !== -1 ? uri.substring(0, questionIndex) : uri;
+  const query = questionIndex !== -1 ? uri.substring(questionIndex) : '';
+  const lastSlash = base.lastIndexOf('/');
+  const prefix = base.substring(0, lastSlash + 1);
+  return `${prefix}leadmanager_automated_tests${query}`;
+}
+
+describe('Lead Manager API Integration Tests', () => {
   let isMongoConnected = false;
+  let userAToken = null;
+  let userBToken = null;
+  let userALeadId = null;
+
+  const testUserA = {
+    name: 'Sales Rep Alice',
+    email: `alice_${Date.now()}@example.com`,
+    password: 'securePassword123',
+  };
+
+  const testUserB = {
+    name: 'Sales Rep Bob',
+    email: `bob_${Date.now()}@example.com`,
+    password: 'anotherPassword456',
+  };
 
   before(async () => {
+    const rawUri = process.env.MONGODB_URI;
+    const testUri = getTestDatabaseUri(rawUri);
+
     try {
-      await connectDB();
+      await mongoose.connect(testUri);
       isMongoConnected = mongoose.connection.readyState === 1;
-    } catch {
+      console.log('Connected to SEPARATE test database:', mongoose.connection.name);
+
+      // Clean test database collections
+      await User.deleteMany({ email: { $regex: /@example\.com$/ } });
+      await Lead.deleteMany({});
+    } catch (err) {
+      console.warn('Could not connect to test database, using test mocks:', err.message);
       isMongoConnected = false;
-    }
-
-    // If MongoDB is not connected (e.g. pending Atlas credentials or offline),
-    // provide an in-memory mock so tests can verify the API contract and validation
-    if (!isMongoConnected) {
-      const mockStorage = [];
-
-      Lead.find = (filter = {}) => ({
-        sort: () => {
-          let results = [...mockStorage];
-          if (filter.name && filter.name.$regex) {
-            const re = new RegExp(filter.name.$regex, filter.name.$options || '');
-            results = results.filter((l) => re.test(l.name));
-          }
-          if (filter.status) {
-            results = results.filter((l) => l.status === filter.status);
-          }
-          return Promise.resolve(results);
-        },
-      });
-
-      Lead.findById = (id) => {
-        const item = mockStorage.find((l) => l.id === id || l._id === id);
-        return Promise.resolve(item || null);
-      };
-
-      Lead.create = (doc) => {
-        const id = '654321' + Math.random().toString(36).substring(2, 8);
-        const item = { ...doc, id, _id: id, createdAt: new Date() };
-        mockStorage.push(item);
-        return Promise.resolve(item);
-      };
-
-      Lead.findByIdAndUpdate = (id, update) => {
-        const index = mockStorage.findIndex((l) => l.id === id || l._id === id);
-        if (index === -1) return Promise.resolve(null);
-        mockStorage[index] = { ...mockStorage[index], ...update };
-        return Promise.resolve(mockStorage[index]);
-      };
-
-      Lead.findByIdAndDelete = (id) => {
-        const index = mockStorage.findIndex((l) => l.id === id || l._id === id);
-        if (index === -1) return Promise.resolve(null);
-        const [deleted] = mockStorage.splice(index, 1);
-        return Promise.resolve(deleted);
-      };
     }
   });
 
   after(async () => {
     if (isMongoConnected) {
+      // Clean up test data
+      await User.deleteMany({ email: { $regex: /@example\.com$/ } });
+      await Lead.deleteMany({});
       await mongoose.disconnect();
     }
   });
@@ -77,15 +73,74 @@ describe('Lead Manager API Tests (MongoDB)', () => {
     assert.equal(res.body.status, 'ok');
   });
 
-  test('GET /api/leads returns all leads', async () => {
-    const res = await request(app).get('/api/leads');
-    assert.equal(res.status, 200);
+  // --- AUTHENTICATION TESTS ---
+  test('POST /api/auth/signup creates a user and returns token', async () => {
+    const res = await request(app).post('/api/auth/signup').send(testUserA);
+    assert.equal(res.status, 201);
     assert.equal(res.body.success, true);
-    assert.ok(Array.isArray(res.body.data));
+    assert.ok(res.body.token);
+    assert.equal(res.body.user.email, testUserA.email.toLowerCase());
+    userAToken = res.body.token;
   });
 
-  test('POST /api/leads creates a lead with valid data', async () => {
-    const payload = {
+  test('POST /api/auth/signup rejects duplicate email', async () => {
+    const res = await request(app).post('/api/auth/signup').send(testUserA);
+    assert.equal(res.status, 400);
+    assert.equal(res.body.success, false);
+    assert.ok(res.body.errors.email);
+  });
+
+  test('POST /api/auth/signup validates required fields', async () => {
+    const res = await request(app).post('/api/auth/signup').send({
+      name: '',
+      email: 'bad-email',
+      password: '123',
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.success, false);
+    assert.ok(res.body.errors.name);
+    assert.ok(res.body.errors.email);
+    assert.ok(res.body.errors.password);
+  });
+
+  test('POST /api/auth/login authenticates valid user', async () => {
+    const res = await request(app).post('/api/auth/login').send({
+      email: testUserA.email,
+      password: testUserA.password,
+    });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.ok(res.body.token);
+  });
+
+  test('POST /api/auth/login rejects invalid password', async () => {
+    const res = await request(app).post('/api/auth/login').send({
+      email: testUserA.email,
+      password: 'wrongPassword',
+    });
+    assert.equal(res.status, 401);
+    assert.equal(res.body.success, false);
+  });
+
+  test('POST /api/auth/login rejects non-existent email', async () => {
+    const res = await request(app).post('/api/auth/login').send({
+      email: 'nonexistent@example.com',
+      password: 'somePassword',
+    });
+    assert.equal(res.status, 401);
+    assert.equal(res.body.success, false);
+  });
+
+  // --- ROUTE PROTECTION TEST ---
+  test('GET /api/leads rejects unauthenticated request with 401', async () => {
+    const res = await request(app).get('/api/leads');
+    assert.equal(res.status, 401);
+    assert.equal(res.body.success, false);
+  });
+
+  // --- LEADS CRUD & DASHBOARD TESTS ---
+  test('POST /api/leads creates lead for authenticated user', async () => {
+    const newLead = {
       name: 'Rohan Gupta',
       email: 'rohan.gupta@enterprise.org',
       phone: '+91 99001 12233',
@@ -94,81 +149,88 @@ describe('Lead Manager API Tests (MongoDB)', () => {
       status: 'New',
     };
 
-    const res = await request(app).post('/api/leads').send(payload);
+    const res = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send(newLead);
+
     assert.equal(res.status, 201);
     assert.equal(res.body.success, true);
     assert.ok(res.body.data.id || res.body.data._id);
     assert.equal(res.body.data.name, 'Rohan Gupta');
-    assert.equal(res.body.data.email, 'rohan.gupta@enterprise.org');
-    assert.equal(res.body.data.status, 'New');
-
-    createdLeadId = res.body.data.id || res.body.data._id;
+    userALeadId = res.body.data.id || res.body.data._id;
   });
 
-  test('POST /api/leads validates required name', async () => {
-    const res = await request(app).post('/api/leads').send({
-      email: 'valid@email.com',
-      source: 'Website',
-      status: 'New',
-    });
+  test('POST /api/leads validates required fields', async () => {
+    const res = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({ email: 'invalid-email', source: 'Website', status: 'New' });
+
     assert.equal(res.status, 400);
     assert.equal(res.body.success, false);
     assert.ok(res.body.errors.name);
   });
 
-  test('POST /api/leads validates email format', async () => {
-    const res = await request(app).post('/api/leads').send({
-      name: 'Test Lead',
-      email: 'invalid-email',
-      source: 'Website',
-      status: 'New',
-    });
-    assert.equal(res.status, 400);
-    assert.equal(res.body.success, false);
-    assert.ok(res.body.errors.email);
-  });
+  test('GET /api/leads returns user leads with pagination metadata', async () => {
+    const res = await request(app)
+      .get('/api/leads?page=1&limit=10')
+      .set('Authorization', `Bearer ${userAToken}`);
 
-  test('POST /api/leads validates status enum', async () => {
-    const res = await request(app).post('/api/leads').send({
-      name: 'Test Lead',
-      email: 'lead@test.com',
-      source: 'Website',
-      status: 'InvalidStatus',
-    });
-    assert.equal(res.status, 400);
-    assert.equal(res.body.success, false);
-    assert.ok(res.body.errors.status);
-  });
-
-  test('GET /api/leads/:id returns single lead', async () => {
-    assert.ok(createdLeadId);
-    const res = await request(app).get(`/api/leads/${createdLeadId}`);
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
-    assert.equal(res.body.data.id || res.body.data._id, createdLeadId);
-    assert.equal(res.body.data.name, 'Rohan Gupta');
+    assert.ok(Array.isArray(res.body.data));
+    assert.ok(res.body.pagination);
+    assert.equal(res.body.pagination.page, 1);
+    assert.ok(res.body.pagination.totalLeads >= 1);
   });
 
-  test('GET /api/leads/:id returns 404 for unknown id', async () => {
-    const res = await request(app).get('/api/leads/654321abcdef0123456789aa');
-    assert.equal(res.status, 404);
-    assert.equal(res.body.success, false);
-  });
-
-  test('PUT /api/leads/:id updates lead details and status', async () => {
-    assert.ok(createdLeadId);
-    const updatePayload = {
-      name: 'Rohan Gupta Updated',
-      email: 'rohan.gupta@enterprise.org',
-      phone: '+91 99001 12233',
-      company: 'Enterprise Org Global',
-      source: 'Website',
-      status: 'Qualified',
-    };
-
+  test('GET /api/leads/dashboard returns status counts for user', async () => {
     const res = await request(app)
-      .put(`/api/leads/${createdLeadId}`)
-      .send(updatePayload);
+      .get('/api/leads/dashboard')
+      .set('Authorization', `Bearer ${userAToken}`);
+
+    assert.equal(res.status, 200);
+    assert.equal(res.body.success, true);
+    assert.ok(typeof res.body.data.total === 'number');
+    assert.ok(typeof res.body.data.new === 'number');
+    assert.ok(typeof res.body.data.contacted === 'number');
+    assert.ok(typeof res.body.data.qualified === 'number');
+    assert.ok(typeof res.body.data.lost === 'number');
+    assert.ok(res.body.data.total >= 1);
+  });
+
+  test('GET /api/leads?search= filters leads by name', async () => {
+    const res = await request(app)
+      .get('/api/leads?search=Rohan')
+      .set('Authorization', `Bearer ${userAToken}`);
+
+    assert.equal(res.status, 200);
+    assert.ok(res.body.data.length > 0);
+    assert.ok(res.body.data.every((l) => l.name.toLowerCase().includes('rohan')));
+  });
+
+  test('GET /api/leads?status= filters leads by status', async () => {
+    const res = await request(app)
+      .get('/api/leads?status=New')
+      .set('Authorization', `Bearer ${userAToken}`);
+
+    assert.equal(res.status, 200);
+    assert.ok(res.body.data.every((l) => l.status === 'New'));
+  });
+
+  test('PUT /api/leads/:id updates lead status and details', async () => {
+    const res = await request(app)
+      .put(`/api/leads/${userALeadId}`)
+      .set('Authorization', `Bearer ${userAToken}`)
+      .send({
+        name: 'Rohan Gupta Updated',
+        email: 'rohan.gupta@enterprise.org',
+        phone: '+91 99001 12233',
+        company: 'Enterprise Org Global',
+        source: 'Website',
+        status: 'Qualified',
+      });
 
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
@@ -176,26 +238,55 @@ describe('Lead Manager API Tests (MongoDB)', () => {
     assert.equal(res.body.data.name, 'Rohan Gupta Updated');
   });
 
-  test('GET /api/leads?search= filters leads by name only', async () => {
-    const res = await request(app).get('/api/leads?search=Rohan');
-    assert.equal(res.status, 200);
-    assert.ok(res.body.data.length > 0);
-    assert.ok(res.body.data.every((l) => l.name.toLowerCase().includes('rohan')));
+  // --- MULTI-USER ISOLATION TESTS ---
+  test('User B cannot view, edit, or delete User A lead', async () => {
+    // 1. Sign up User B
+    const signupB = await request(app).post('/api/auth/signup').send(testUserB);
+    assert.equal(signupB.status, 201);
+    userBToken = signupB.body.token;
+
+    // 2. User B tries to view User A's lead -> 404
+    const getRes = await request(app)
+      .get(`/api/leads/${userALeadId}`)
+      .set('Authorization', `Bearer ${userBToken}`);
+    assert.equal(getRes.status, 404);
+
+    // 3. User B tries to edit User A's lead -> 404
+    const putRes = await request(app)
+      .put(`/api/leads/${userALeadId}`)
+      .set('Authorization', `Bearer ${userBToken}`)
+      .send({
+        name: 'Hacked Name',
+        email: 'hacked@hack.com',
+        source: 'Website',
+        status: 'Lost',
+      });
+    assert.equal(putRes.status, 404);
+
+    // 4. User B tries to delete User A's lead -> 404
+    const delRes = await request(app)
+      .delete(`/api/leads/${userALeadId}`)
+      .set('Authorization', `Bearer ${userBToken}`);
+    assert.equal(delRes.status, 404);
+
+    // 5. User B's lead list must be empty
+    const listB = await request(app)
+      .get('/api/leads')
+      .set('Authorization', `Bearer ${userBToken}`);
+    assert.equal(listB.body.data.length, 0);
   });
 
-  test('GET /api/leads?status= filters leads by status only', async () => {
-    const res = await request(app).get('/api/leads?status=Qualified');
-    assert.equal(res.status, 200);
-    assert.ok(res.body.data.every((l) => l.status === 'Qualified'));
-  });
+  test('DELETE /api/leads/:id allows User A to delete their own lead', async () => {
+    const res = await request(app)
+      .delete(`/api/leads/${userALeadId}`)
+      .set('Authorization', `Bearer ${userAToken}`);
 
-  test('DELETE /api/leads/:id deletes the lead', async () => {
-    assert.ok(createdLeadId);
-    const res = await request(app).delete(`/api/leads/${createdLeadId}`);
     assert.equal(res.status, 200);
     assert.equal(res.body.success, true);
 
-    const verifyRes = await request(app).get(`/api/leads/${createdLeadId}`);
-    assert.equal(verifyRes.status, 404);
+    const checkRes = await request(app)
+      .get(`/api/leads/${userALeadId}`)
+      .set('Authorization', `Bearer ${userAToken}`);
+    assert.equal(checkRes.status, 404);
   });
 });

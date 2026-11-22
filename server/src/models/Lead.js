@@ -2,6 +2,12 @@ import mongoose from 'mongoose';
 
 const leadSchema = new mongoose.Schema(
   {
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Lead must belong to a user'],
+      index: true,
+    },
     name: {
       type: String,
       required: [true, 'Name is required'],
@@ -47,6 +53,10 @@ const leadSchema = new mongoose.Schema(
     },
   }
 );
+
+// Indexes for fast searching and filtering per user
+leadSchema.index({ user: 1, name: 1 });
+leadSchema.index({ user: 1, status: 1 });
 
 export const Lead = mongoose.model('Lead', leadSchema);
 export default Lead;

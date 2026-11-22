@@ -1,33 +1,34 @@
-import { Users, Plus } from 'lucide-react';
-
-export default function Navbar({ onOpenAddModal }) {
+export default function Navbar({ user, onLogout }) {
   return (
-    <header className="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Application Title */}
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-xs">
-              <Users className="w-5 h-5" />
+    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xs border-b border-slate-200/80">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6">
+        <div className="flex items-center justify-between h-14">
+          {/* Logo & Title */}
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-slate-900 text-white font-bold text-xs flex items-center justify-center">
+              L
             </div>
             <div>
-              <span className="font-bold text-lg text-slate-900 tracking-tight">
+              <span className="font-semibold text-sm text-slate-900">
                 Lead Manager
               </span>
-              <p className="text-xs text-slate-500 hidden sm:block">
-                Meru Technosoft Screening Assignment
-              </p>
             </div>
           </div>
 
-          {/* Add Lead Action */}
-          <button
-            onClick={onOpenAddModal}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white text-xs font-semibold rounded-lg shadow-xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Lead</span>
-          </button>
+          {/* User Profile & Logout */}
+          <div className="flex items-center gap-3">
+            {user && (
+              <span className="text-xs text-slate-500 hidden sm:inline">
+                {user.name} ({user.email})
+              </span>
+            )}
+            <button
+              onClick={onLogout}
+              className="text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 px-2.5 py-1.5 rounded-md border border-slate-200 transition-colors cursor-pointer"
+            >
+              Log Out
+            </button>
+          </div>
         </div>
       </div>
     </header>

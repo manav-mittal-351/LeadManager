@@ -1,11 +1,16 @@
 import Lead from '../models/Lead.js';
 
-// Get leads with search (by name only) and filter (by status only)
-export async function getLeads(req, res, next) {
+// Get leads for the logged-in user with search, status filter, and pagination
+export async function getUserLeads(req, res, next) {
   try {
-    const { search = '', status = 'All' } = req.query;
+    const { search = '', status = 'All', page = 1, limit = 10 } = req.query;
 
-    const filter = {};
+    const pageNumber = Math.max(1, parseInt(page, 10) || 1);
+    const limitNumber = Math.max(1, parseInt(limit, 10) || 10);
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Filter strictly by the authenticated user's ID
+    const filter = { user: req.userId };
 
     // Search by lead name only (case-insensitive)
     if (search && search.trim() !== '') {
@@ -17,23 +22,64 @@ export async function getLeads(req, res, next) {
       filter.status = status.trim();
     }
 
-    const leads = await Lead.find(filter).sort({ createdAt: -1 });
+    // Get total matching count and paginated items in parallel
+    const [totalLeads, leads] = await Promise.all([
+      Lead.countDocuments(filter),
+      Lead.find(filter)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNumber),
+    ]);
+
+    const totalPages = Math.ceil(totalLeads / limitNumber) || 1;
 
     return res.status(200).json({
       success: true,
       data: leads,
+      pagination: {
+        page: pageNumber,
+        limit: limitNumber,
+        totalLeads,
+        totalPages,
+      },
     });
   } catch (err) {
     next(err);
   }
 }
 
-// Get single lead by ID
+// Get dashboard counts by status for the logged-in user
+export async function getDashboardCounts(req, res, next) {
+  try {
+    const [total, newCount, contacted, qualified, lost] = await Promise.all([
+      Lead.countDocuments({ user: req.userId }),
+      Lead.countDocuments({ user: req.userId, status: 'New' }),
+      Lead.countDocuments({ user: req.userId, status: 'Contacted' }),
+      Lead.countDocuments({ user: req.userId, status: 'Qualified' }),
+      Lead.countDocuments({ user: req.userId, status: 'Lost' }),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        total,
+        new: newCount,
+        contacted,
+        qualified,
+        lost,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// Get single lead by ID for the logged-in user
 export async function getLeadById(req, res, next) {
   try {
     const { id } = req.params;
 
-    const lead = await Lead.findById(id);
+    const lead = await Lead.findOne({ _id: id, user: req.userId });
     if (!lead) {
       return res.status(404).json({
         success: false,
@@ -46,7 +92,6 @@ export async function getLeadById(req, res, next) {
       data: lead,
     });
   } catch (err) {
-    // If invalid MongoDB ObjectId format, return 404
     if (err.name === 'CastError') {
       return res.status(404).json({
         success: false,
@@ -57,12 +102,13 @@ export async function getLeadById(req, res, next) {
   }
 }
 
-// Create new lead
+// Create new lead for the logged-in user
 export async function createLead(req, res, next) {
   try {
     const { name, email, phone, company, source, status } = req.body;
 
     const newLead = await Lead.create({
+      user: req.userId,
       name,
       email,
       phone: phone || '',
@@ -81,14 +127,14 @@ export async function createLead(req, res, next) {
   }
 }
 
-// Edit / Update lead
+// Edit / Update lead belonging to the logged-in user
 export async function updateLead(req, res, next) {
   try {
     const { id } = req.params;
     const { name, email, phone, company, source, status } = req.body;
 
-    const updatedLead = await Lead.findByIdAndUpdate(
-      id,
+    const updatedLead = await Lead.findOneAndUpdate(
+      { _id: id, user: req.userId },
       {
         name,
         email,
@@ -123,12 +169,12 @@ export async function updateLead(req, res, next) {
   }
 }
 
-// Delete lead
+// Delete lead belonging to the logged-in user
 export async function deleteLead(req, res, next) {
   try {
     const { id } = req.params;
 
-    const deletedLead = await Lead.findByIdAndDelete(id);
+    const deletedLead = await Lead.findOneAndDelete({ _id: id, user: req.userId });
     if (!deletedLead) {
       return res.status(404).json({
         success: false,

@@ -269,7 +269,7 @@ export default function LeadModal({ isOpen, onClose, onSave, lead }) {
             <button
               type="submit"
               disabled={submitting}
-              className="px-5 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 rounded-lg shadow-xs transition-colors cursor-pointer"
+              className="px-5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 active:bg-slate-950 disabled:opacity-50 rounded-lg shadow-xs transition-colors cursor-pointer"
             >
               {submitting ? 'Saving...' : isEditing ? 'Update Lead' : 'Add Lead'}
             </button>

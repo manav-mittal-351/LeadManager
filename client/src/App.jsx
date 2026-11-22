@@ -1,23 +1,39 @@
 import { useState, useEffect, useCallback } from 'react';
 import Navbar from './components/Navbar.jsx';
+import AuthView from './components/AuthView.jsx';
+import DashboardCounts from './components/DashboardCounts.jsx';
 import LeadsFilter from './components/LeadsFilter.jsx';
 import LeadsTable from './components/LeadsTable.jsx';
 import LeadModal from './components/LeadModal.jsx';
 import DeleteConfirmModal from './components/DeleteConfirmModal.jsx';
 import Toast from './components/Toast.jsx';
-import { leadsApi } from './services/api.js';
+import { authApi, leadsApi } from './services/api.js';
 import { AlertCircle } from 'lucide-react';
 
 export default function App() {
+  // Authentication state
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  // Leads & Dashboard state
   const [leads, setLeads] = useState([]);
+  const [counts, setCounts] = useState({ total: 0, new: 0, contacted: 0, qualified: 0, lost: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Search by name & filter by status
+  // Filter & Pagination state
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [status, setStatus] = useState('All');
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    totalLeads: 0,
+    totalPages: 1,
+  });
 
-  // Modals state
+  // Modal state
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState(null);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -30,33 +46,88 @@ export default function App() {
     setToast({ message, type });
   };
 
-  // Fetch leads from API with search (name) and status filter
+  // Check auth session on startup
+  useEffect(() => {
+    async function checkAuth() {
+      const token = localStorage.getItem('lead_manager_token');
+      if (token) {
+        try {
+          const res = await authApi.getMe();
+          setUser(res.user);
+        } catch {
+          localStorage.removeItem('lead_manager_token');
+          setUser(null);
+        }
+      }
+      setAuthLoading(false);
+    }
+    checkAuth();
+  }, []);
+
+  // Debounce search by 300ms
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [search]);
+
+  // Fetch status counts for the small dashboard
+  const loadDashboardCounts = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await leadsApi.getDashboardCounts();
+      if (res.success && res.data) {
+        setCounts(res.data);
+      }
+    } catch (err) {
+      console.error('Failed to load dashboard counts:', err);
+    }
+  }, [user]);
+
+  // Fetch paginated leads
   const loadLeads = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     setError(null);
     try {
       const res = await leadsApi.getAll({
-        search,
+        page,
+        limit: 10,
+        search: debouncedSearch,
         status,
       });
 
       if (res.success) {
         setLeads(res.data || []);
+        if (res.pagination) {
+          setPagination(res.pagination);
+        }
       }
     } catch (err) {
       console.error('Failed to load leads:', err);
-      setError(err.message || 'Unable to connect to the server.');
-      showToast(err.message || 'Error fetching leads', 'error');
+      if (err.status === 401) {
+        handleLogout();
+        showToast('Session expired. Please log in again.', 'error');
+      } else {
+        setError(err.message || 'Unable to connect to the server.');
+        showToast(err.message || 'Error fetching leads', 'error');
+      }
     } finally {
       setLoading(false);
     }
-  }, [search, status]);
+  }, [user, page, debouncedSearch, status]);
 
+  // Reload data when filters, pagination, or user changes
   useEffect(() => {
-    loadLeads();
-  }, [loadLeads]);
+    if (user) {
+      loadLeads();
+      loadDashboardCounts();
+    }
+  }, [user, loadLeads, loadDashboardCounts]);
 
-  // Create or Update lead handler
+  // Save Lead (Add or Edit)
   const handleSaveLead = async (formData, leadId) => {
     if (leadId) {
       await leadsApi.update(leadId, formData);
@@ -66,55 +137,103 @@ export default function App() {
       showToast(`Lead "${formData.name}" added successfully!`, 'success');
     }
     await loadLeads();
+    await loadDashboardCounts();
   };
 
-  // Delete lead handler
+  // Delete Lead
   const handleDeleteConfirm = async (id) => {
     await leadsApi.delete(id);
     showToast('Lead deleted successfully', 'info');
     await loadLeads();
+    await loadDashboardCounts();
   };
 
+  // Logout
+  const handleLogout = () => {
+    localStorage.removeItem('lead_manager_token');
+    setUser(null);
+    setLeads([]);
+    setCounts({ total: 0, new: 0, contacted: 0, qualified: 0, lost: 0 });
+    showToast('Logged out successfully', 'info');
+  };
+
+  // Status Filter click (from Dashboard or Toolbar)
+  const handleStatusSelect = (newStatus) => {
+    setStatus(newStatus);
+    setPage(1);
+  };
+
+  // Loading initial auth session
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-xs font-medium text-slate-400">Loading...</div>
+      </div>
+    );
+  }
+
+  // Not logged in: Show minimalist Login / Signup
+  if (!user) {
+    return (
+      <>
+        <AuthView onAuthSuccess={(newUser) => setUser(newUser)} />
+        <Toast toast={toast} onClose={() => setToast(null)} />
+      </>
+    );
+  }
+
+  // Logged in: Main Leads Application
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
-      {/* Navigation Header with Title and Add Lead Button */}
-      <Navbar
-        onOpenAddModal={() => {
-          setEditingLead(null);
-          setLeadModalOpen(true);
-        }}
-      />
+      {/* Minimal Top Header */}
+      <Navbar user={user} onLogout={handleLogout} />
 
-      {/* Main Content */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      {/* Main Container */}
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6">
         {/* Error notification if server is unreachable */}
         {error && (
-          <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between text-rose-800 text-sm">
+          <div className="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between text-rose-800 text-xs">
             <div className="flex items-center gap-2">
-              <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
               <span>{error}</span>
             </div>
             <button
-              onClick={loadLeads}
-              className="px-3 py-1 bg-white border border-rose-300 text-rose-700 rounded-md text-xs font-semibold hover:bg-rose-50 transition-colors cursor-pointer"
+              onClick={() => {
+                loadLeads();
+                loadDashboardCounts();
+              }}
+              className="px-2.5 py-0.5 bg-white border border-rose-300 text-rose-700 rounded text-xs font-medium hover:bg-rose-50 cursor-pointer"
             >
               Retry
             </button>
           </div>
         )}
 
-        {/* Search by Name & Status Filter */}
+        {/* Minimal Dashboard Counters */}
+        <DashboardCounts
+          counts={counts}
+          activeStatus={status}
+          onSelectStatus={handleStatusSelect}
+        />
+
+        {/* Toolbar: Search by Name, Status Filter Pills & Add Lead Button */}
         <LeadsFilter
           search={search}
           onSearchChange={setSearch}
           status={status}
-          onStatusChange={setStatus}
+          onStatusChange={handleStatusSelect}
+          onOpenAddModal={() => {
+            setEditingLead(null);
+            setLeadModalOpen(true);
+          }}
         />
 
-        {/* Leads Table */}
+        {/* Leads Table with Pagination */}
         <LeadsTable
           leads={leads}
           loading={loading}
+          pagination={pagination}
+          onPageChange={setPage}
           onEditLead={(lead) => {
             setEditingLead(lead);
             setLeadModalOpen(true);
@@ -126,20 +245,11 @@ export default function App() {
         />
       </main>
 
-      {/* Footer */}
-      <footer className="mt-auto border-t border-slate-200 bg-white py-4">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-500">
-          <p>
-            Lead Manager — Full Stack Screening Assignment for{' '}
-            <span className="font-semibold text-slate-700">Meru Technosoft Pvt. Ltd.</span>
-          </p>
-          <div className="flex items-center gap-4 text-[11px]">
-            <span>React + Vite</span>
-            <span>•</span>
-            <span>Node.js / Express</span>
-            <span>•</span>
-            <span>MongoDB Atlas</span>
-          </div>
+      {/* Minimal Footer */}
+      <footer className="mt-auto border-t border-slate-200/80 bg-white py-3">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-1 text-[11px] text-slate-400">
+          <p>Lead Manager — Screening Assignment for Meru Technosoft</p>
+          <p>React • Node.js / Express • MongoDB Atlas</p>
         </div>
       </footer>
 
@@ -165,7 +275,7 @@ export default function App() {
         lead={deletingLead}
       />
 
-      {/* Notification Toast */}
+      {/* Feedback Toast */}
       <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );

@@ -1,11 +1,22 @@
 const API_BASE = '/api';
 
+function getAuthHeaders() {
+  const token = localStorage.getItem('lead_manager_token');
+  const headers = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 async function request(endpoint, options = {}) {
   const url = `${API_BASE}${endpoint}`;
   const config = {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
+      ...getAuthHeaders(),
       ...(options.headers || {}),
     },
   };
@@ -32,16 +43,37 @@ async function request(endpoint, options = {}) {
   }
 }
 
+export const authApi = {
+  signup: (userData) =>
+    request('/auth/signup', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    }),
+
+  login: (credentials) =>
+    request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    }),
+
+  getMe: () => request('/auth/me'),
+};
+
 export const leadsApi = {
-  // Get all leads with optional search (by name) and status filter
+  // Get paginated leads with search and status filter
   getAll: (params = {}) => {
     const query = new URLSearchParams();
+    if (params.page) query.append('page', params.page);
+    if (params.limit) query.append('limit', params.limit);
     if (params.search && params.search.trim()) query.append('search', params.search.trim());
     if (params.status && params.status !== 'All') query.append('status', params.status);
 
     const queryString = query.toString() ? `?${query.toString()}` : '';
     return request(`/leads${queryString}`);
   },
+
+  // Get status counts for the logged-in user
+  getDashboardCounts: () => request('/leads/dashboard'),
 
   getById: (id) => request(`/leads/${id}`),
 
