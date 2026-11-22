@@ -6,7 +6,7 @@ export async function getUserLeads(req, res, next) {
     const { search = '', status = 'All', page = 1, limit = 10 } = req.query;
 
     const pageNumber = Math.max(1, parseInt(page, 10) || 1);
-    const limitNumber = Math.max(1, parseInt(limit, 10) || 10);
+    const limitNumber = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
     const skip = (pageNumber - 1) * limitNumber;
 
     // Filter strictly by the authenticated user's ID

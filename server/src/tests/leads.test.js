@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
@@ -41,12 +42,19 @@ describe('Lead Manager API Integration Tests', () => {
   };
 
   before(async () => {
-    const rawUri = process.env.MONGODB_URI;
-    const testUri = getTestDatabaseUri(rawUri);
+    const rawUri = process.env.TEST_MONGODB_URI || getTestDatabaseUri(process.env.MONGODB_URI);
 
     try {
-      await mongoose.connect(testUri);
+      await mongoose.connect(rawUri);
       isMongoConnected = mongoose.connection.readyState === 1;
+
+      // Strict Safety Check: Refuse to run or clean if not on a dedicated test database
+      if (!mongoose.connection.name || !mongoose.connection.name.toLowerCase().includes('test')) {
+        throw new Error(
+          `SAFETY CHECK FAILED: Refusing to run destructive cleanup. Connected database '${mongoose.connection.name}' does not contain 'test'!`
+        );
+      }
+
       console.log('Connected to SEPARATE test database:', mongoose.connection.name);
 
       // Clean test database collections
@@ -60,9 +68,11 @@ describe('Lead Manager API Integration Tests', () => {
 
   after(async () => {
     if (isMongoConnected) {
-      // Clean up test data
-      await User.deleteMany({ email: { $regex: /@example\.com$/ } });
-      await Lead.deleteMany({});
+      // Re-verify safety guard before after-cleanup
+      if (mongoose.connection.name && mongoose.connection.name.toLowerCase().includes('test')) {
+        await User.deleteMany({ email: { $regex: /@example\.com$/ } });
+        await Lead.deleteMany({});
+      }
       await mongoose.disconnect();
     }
   });
