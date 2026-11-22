@@ -9,9 +9,11 @@ import User from '../models/User.js';
 import Lead from '../models/Lead.js';
 
 // Ensure DNS resolution works reliably on Windows
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch {}
+if (process.platform === 'win32') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+  } catch {}
+}
 
 function getTestDatabaseUri(uri) {
   if (!uri || !uri.includes('://')) return uri;

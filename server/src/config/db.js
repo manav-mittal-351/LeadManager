@@ -1,11 +1,13 @@
 import mongoose from 'mongoose';
 import dns from 'dns';
 
-// Fix for Windows environments where local router DNS refuses SRV queries (querySrv ECONNREFUSED)
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-} catch (err) {
-  console.warn('Could not set custom DNS servers:', err.message);
+// Fix specifically for Windows environments where local router DNS refuses SRV queries
+if (process.platform === 'win32') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+  } catch (err) {
+    console.warn('Could not set custom DNS servers on Windows:', err.message);
+  }
 }
 
 // Safely encodes password in case it contains special characters like '@'
@@ -52,10 +54,10 @@ export async function connectDB() {
     return cachedPromise;
   }
 
-  const uri = process.env.MONGODB_URI;
+  const uri = process.env.MONGODB_URI || process.env.MONGO_URI || process.env.DATABASE_URL;
 
   if (!uri) {
-    const error = new Error('MONGODB_URI is not set in environment variables');
+    const error = new Error('MONGODB_URI environment variable is missing in Vercel project settings');
     console.error(error.message);
     throw error;
   }
