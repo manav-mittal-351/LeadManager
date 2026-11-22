@@ -25,7 +25,13 @@ function sanitizeMongoUri(uri) {
 
     const username = userPass.substring(0, colonIndex);
     const rawPassword = userPass.substring(colonIndex + 1);
-    const encodedPassword = encodeURIComponent(decodeURIComponent(rawPassword));
+    let decoded = rawPassword;
+    try {
+      decoded = decodeURIComponent(rawPassword);
+    } catch {
+      // Use raw password if decodeURIComponent fails on literal '%'
+    }
+    const encodedPassword = encodeURIComponent(decoded);
 
     return `${prefix}${username}:${encodedPassword}@${hostAndQuery}`;
   } catch {

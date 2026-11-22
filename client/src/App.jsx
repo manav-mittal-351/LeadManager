@@ -138,7 +138,7 @@ export default function App() {
             <span>•</span>
             <span>Node.js / Express</span>
             <span>•</span>
-            <span>SQLite Database</span>
+            <span>MongoDB Atlas</span>
           </div>
         </div>
       </footer>

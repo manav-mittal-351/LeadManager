@@ -142,7 +142,7 @@ Create a `.env` file in the `server` folder and set `MONGODB_URI` with your Mong
 
 1. The database connection code lives in a simple, dedicated file: `server/src/config/db.js`.
 2. It uses `mongoose.connect(process.env.MONGODB_URI)` to establish a connection to your MongoDB Atlas cluster.
-3. The connection is initiated once when the Express application boots in `server/src/app.js`.
+3. The connection is initiated before the server starts accepting HTTP requests in `server/src/server.js`.
 4. The Mongoose `Lead` model in `server/src/models/Lead.js` manages documents in the `leads` collection.
 
 ---
