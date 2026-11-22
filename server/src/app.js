@@ -6,16 +6,12 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import leadRoutes from './routes/leadRoutes.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
-import { connectDB } from './config/db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
-// Connect to MongoDB Atlas
-connectDB();
 
 export const app = express();
 

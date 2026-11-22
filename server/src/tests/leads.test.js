@@ -4,17 +4,21 @@ import request from 'supertest';
 import mongoose from 'mongoose';
 import app from '../app.js';
 import Lead from '../models/Lead.js';
+import { connectDB } from '../config/db.js';
 
 describe('Lead Manager API Tests (MongoDB)', () => {
   let createdLeadId = null;
   let isMongoConnected = false;
 
   before(async () => {
-    // Wait briefly for MongoDB connection attempt
-    await new Promise((r) => setTimeout(r, 1200));
-    isMongoConnected = mongoose.connection.readyState === 1;
+    try {
+      await connectDB();
+      isMongoConnected = mongoose.connection.readyState === 1;
+    } catch {
+      isMongoConnected = false;
+    }
 
-    // If MongoDB is not connected (e.g. offline or pending Atlas credentials),
+    // If MongoDB is not connected (e.g. pending Atlas credentials or offline),
     // provide an in-memory mock so tests can verify the API contract and validation
     if (!isMongoConnected) {
       const mockStorage = [];
