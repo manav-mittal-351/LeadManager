@@ -26,7 +26,11 @@ async function request(endpoint, options = {}) {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      const error = new Error(data.message || `Request failed with status ${response.status}`);
+      let defaultMsg = `Request failed with status ${response.status}`;
+      if (response.status === 502 || response.status === 504) {
+        defaultMsg = 'Cannot reach backend server. Please make sure the backend is running on port 5000.';
+      }
+      const error = new Error(data.message || defaultMsg);
       error.status = response.status;
       error.errors = data.errors;
       throw error;

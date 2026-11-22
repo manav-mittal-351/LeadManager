@@ -17,7 +17,7 @@ async function startServer() {
     // Wait for MongoDB to connect before accepting requests
     await connectDB();
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       console.log(`===============================================`);
       console.log(`🚀 Meru Lead Manager Server is running`);
       console.log(`📍 Port: http://localhost:${PORT}`);
